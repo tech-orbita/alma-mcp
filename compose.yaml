@@ -1,0 +1,78 @@
+name: alma-mcp
+
+services:
+  postgres:
+    image: postgres:18.4-alpine3.23
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: alma_mcp
+      POSTGRES_USER: alma_mcp
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-only-change-me}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U alma_mcp -d alma_mcp"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    security_opt:
+      - no-new-privileges:true
+
+  alma-mock:
+    build: .
+    restart: unless-stopped
+    command: ["node", "dist/mock-alma-server.js"]
+    environment:
+      MOCK_ALMA_PORT: 4010
+      ALMA_API_TOKEN: ${ALMA_API_TOKEN:-local-alma-token-not-for-production}
+    ports:
+      - "127.0.0.1:4010:4010"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4010/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    security_opt:
+      - no-new-privileges:true
+
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      HOST: 0.0.0.0
+      PORT: 3000
+      TRUST_PROXY: 1
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      MCP_BEARER_TOKEN: ${MCP_BEARER_TOKEN:-local-mcp-token-change-before-use-1234}
+      ALMA_BASE_URL: http://alma-mock:4010/api/
+      ALMA_API_TOKEN: ${ALMA_API_TOKEN:-local-alma-token-not-for-production}
+      ALMA_TIMEOUT_MS: 8000
+      ALMA_READ_RETRIES: 2
+      ALMA_TIMEZONE: America/Bogota
+      SLOT_TOKEN_SECRET: ${SLOT_TOKEN_SECRET:-local-slot-secret-change-before-use-1234}
+      SLOT_TOKEN_TTL_SECONDS: 300
+      DATABASE_URL: postgresql://alma_mcp:${POSTGRES_PASSWORD:-local-only-change-me}@postgres:5432/alma_mcp
+      DATABASE_SSL_MODE: disable
+      DB_POOL_MAX: 10
+      LOG_LEVEL: info
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      alma-mock:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    init: true
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  postgres_data:
