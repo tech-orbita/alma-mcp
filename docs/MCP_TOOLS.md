@@ -29,7 +29,7 @@ Entrada `{}`. Devuelve sucursales activas. Uso administrativo para identificar r
 
 ### `listar_servicios`
 
-Entrada opcional `{ "page": 1 }`. Devuelve servicios paginados.
+Entrada `{ "buscar": "masaje" }`: busca en todo el catálogo sin distinguir tildes/mayúsculas y devuelve hasta 15 resultados. Use `page` si `hay_mas` es true. Sin buscar se conserva la paginación original de ALMA. El catálogo se cachea en memoria 60 segundos; no se consultan equivalencias semánticas.
 
 ### `listar_especialistas`
 
@@ -45,13 +45,14 @@ Entrada `{ "identificacion": "123456789" }`. No sustituir documento por teléfon
 {
   "sucursal_id": 1,
   "servicio_id": 10,
+  "servicio_nombre": "Consulta inicial",
   "fecha": "2026-08-10",
   "especialista_id": 25,
   "page": 1
 }
 ```
 
-Cada resultado agrega `slot_token`. El agente debe conservar el token opaco sin editarlo, no mostrarlo al cliente y usarlo una sola vez al crear/reagendar. Si expira, se consulta disponibilidad de nuevo.
+La respuesta agrega `data.servicio` con ID, nombre y duración verificados contra el catálogo. Cada resultado agrega `slot_token`. El nombre y el ID deben coincidir antes de consultar ALMA. El agente debe conservar el token opaco sin editarlo, no mostrarlo al cliente y usarlo una sola vez al crear/reagendar. Si expira, se consulta disponibilidad de nuevo.
 
 ### `consultar_citas`
 
@@ -68,6 +69,8 @@ Cliente existente:
   "tipo_cliente": "existente",
   "cliente_id": 50,
   "slot_token": "...",
+  "servicio_id": 10,
+  "servicio_nombre": "Consulta inicial",
   "idempotency_key": "contact-abc-create-intent-001",
   "confirmacion": true,
   "observacion": "Opcional"
@@ -86,6 +89,8 @@ Cliente nuevo:
   "telefono": "3001234567",
   "correo": "cliente@correo.com",
   "slot_token": "...",
+  "servicio_id": 10,
+  "servicio_nombre": "Consulta inicial",
   "idempotency_key": "contact-abc-create-intent-001",
   "confirmacion": true
 }
@@ -135,3 +140,7 @@ Crear: servicio real (catálogo paginado si es necesario) -> especialistas para 
 Reagendar: localizar cita -> disponibilidad -> resumen/confirmación -> reagendar -> consultar cita.
 
 Cancelar: localizar cita -> resumen/confirmación -> cancelar -> comunicar resultado.
+
+## Cambio de contrato para GHL
+
+`servicio_nombre` es obligatorio en disponibilidad; `servicio_id` y `servicio_nombre` son obligatorios en creación. Clientes antiguos deberán actualizar sus argumentos y redescubrir herramientas tras el despliegue. El servidor valida el par ID/nombre contra catálogo y el ID contra token. La confirmación humana sigue dependiendo de la conversación y no es verificable por MCP. Una respuesta de ALMA que no coincida con la selección se trata como resultado incierto y exige reconciliación. El catálogo se cachea hasta 60 segundos, mientras ALMA sigue validando disponibilidad.

@@ -58,7 +58,7 @@ export function createApplication(dependencies: ApplicationDependencies): Applic
   });
 
   app.get('/health', (_request, response) => {
-    response.status(200).json({ status: 'ok', service: 'alma-mcp', version: '1.1.0' });
+    response.status(200).json({ status: 'ok', service: 'alma-mcp', version: '1.2.0' });
   });
 
   app.get('/ready', async (_request, response) => {

@@ -11,7 +11,7 @@ const slotToken = z.string().min(80).max(2_048).describe('Token opaco íntegro d
 const confirmation = z.literal(true).describe('Debe ser true solo después de que la persona confirme explícitamente.');
 
 export const listarSucursalesInputSchema = strictEmptyObject;
-export const listarServiciosInputSchema = z.object({ page: pageSchema.describe('Página positiva; omitir para la primera.').optional() }).strict();
+export const listarServiciosInputSchema = z.object({ page: pageSchema.describe('Página positiva; con buscar pagina coincidencias filtradas.').optional(), buscar: z.string().trim().min(2).max(80).describe('Palabras del servicio para filtrar todo el catálogo, sin inventar equivalencias.').optional() }).strict();
 export const listarEspecialistasInputSchema = z
   .object({ servicio_id: positiveIdSchema.describe('ID numérico real de listar_servicios'), page: pageSchema.describe('Página positiva opcional').optional() })
   .strict();
@@ -22,6 +22,7 @@ export const consultarDisponibilidadInputSchema = z
   .object({
     sucursal_id: positiveIdSchema.describe('ID numérico de Amsterdam Plaza: siempre 1'),
     servicio_id: positiveIdSchema.describe('ID numérico del servicio real seleccionado'),
+    servicio_nombre: shortText.describe('Nombre exacto del catálogo correspondiente a servicio_id; no use el nombre solicitado si es diferente.'),
     fecha: dateSchema.describe('Fecha deseada en formato YYYY-MM-DD'),
     especialista_id: positiveIdSchema.describe('ID numérico opcional si hay preferencia por especialista').optional(),
     page: pageSchema.describe('Página positiva opcional').optional(),
@@ -32,6 +33,8 @@ const crearBase = {
   idempotency_key: idempotencyKey,
   confirmacion: confirmation,
   slot_token: slotToken,
+  servicio_id: positiveIdSchema.describe('ID del servicio real presentado y confirmado por el cliente.'),
+  servicio_nombre: shortText.describe('Nombre real del catálogo presentado y confirmado por el cliente.'),
   observacion: observation.optional(),
 };
 

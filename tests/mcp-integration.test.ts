@@ -108,7 +108,7 @@ describe('integración MCP con ALMA simulado', () => {
     const sessionId = await initialize();
     const availability = await rpc(sessionId, 2, 'tools/call', {
       name: 'consultar_disponibilidad',
-      arguments: { sucursal_id: 2, servicio_id: 10, fecha: '2026-08-10' },
+      arguments: { sucursal_id: 2, servicio_id: 10, servicio_nombre: 'Consulta inicial', fecha: '2026-08-10' },
     });
     expect(availability.body.result.structuredContent.error.code).toBe('SUCURSAL_NO_AUTORIZADA');
 
@@ -118,9 +118,25 @@ describe('integración MCP con ALMA simulado', () => {
     });
     const created = await rpc(sessionId, 3, 'tools/call', {
       name: 'crear_cita',
-      arguments: { tipo_cliente: 'existente', cliente_id: 50, idempotency_key: 'other-branch-create-0001', confirmacion: true, slot_token: tokenOtherBranch },
+      arguments: { tipo_cliente: 'existente', cliente_id: 50, servicio_id: 10, servicio_nombre: 'Consulta inicial', idempotency_key: 'other-branch-create-0001', confirmacion: true, slot_token: tokenOtherBranch },
     });
     expect(created.body.result.structuredContent.error.code).toBe('SUCURSAL_NO_AUTORIZADA');
+    expect(mockAppointments).toHaveLength(0);
+  });
+
+  it('busca el catálogo y rechaza emparejamientos incorrectos antes de crear', async () => {
+    const sessionId = await initialize();
+    const search = await rpc(sessionId, 2, 'tools/call', { name: 'listar_servicios', arguments: { buscar: 'CONSULTA' } });
+    expect(search.body.result.structuredContent.data.servicios).toEqual([{ id: 10, nombre: 'Consulta inicial', duracion: 30, valoracion: false }]);
+    const mismatch = await rpc(sessionId, 3, 'tools/call', { name: 'consultar_disponibilidad', arguments: { sucursal_id: 1, servicio_id: 10, servicio_nombre: 'Masaje', fecha: '2026-08-10' } });
+    expect(mismatch.body.result.structuredContent.error.code).toBe('SERVICIO_NO_COINCIDE');
+    const availability = await rpc(sessionId, 4, 'tools/call', { name: 'consultar_disponibilidad', arguments: { sucursal_id: 1, servicio_id: 10, servicio_nombre: 'Consulta inicial', fecha: '2026-08-10' } });
+    expect(availability.body.result.structuredContent.data.servicio).toEqual({ id: 10, nombre: 'Consulta inicial', duracion: 30 });
+    const slotToken = availability.body.result.structuredContent.data.disponibilidad[0].slot_token as string;
+    const bad = await rpc(sessionId, 5, 'tools/call', { name: 'crear_cita', arguments: { tipo_cliente: 'existente', cliente_id: 50, servicio_id: 11, servicio_nombre: 'Consulta inicial', idempotency_key: 'mismatch-service-create-0001', confirmacion: true, slot_token: slotToken } });
+    expect(bad.body.result.structuredContent.error.code).toBe('SERVICIO_NO_COINCIDE');
+    const badName = await rpc(sessionId, 6, 'tools/call', { name: 'crear_cita', arguments: { tipo_cliente: 'existente', cliente_id: 50, servicio_id: 10, servicio_nombre: 'Masaje', idempotency_key: 'mismatch-name-create-0001', confirmacion: true, slot_token: slotToken } });
+    expect(badName.body.result.structuredContent.error.code).toBe('SERVICIO_NO_COINCIDE');
     expect(mockAppointments).toHaveLength(0);
   });
 
@@ -128,13 +144,15 @@ describe('integración MCP con ALMA simulado', () => {
     const sessionId = await initialize();
     const availability = await rpc(sessionId, 2, 'tools/call', {
       name: 'consultar_disponibilidad',
-      arguments: { sucursal_id: 1, servicio_id: 10, fecha: '2026-08-10' },
+      arguments: { sucursal_id: 1, servicio_id: 10, servicio_nombre: 'Consulta inicial', fecha: '2026-08-10' },
     });
     const slotToken = availability.body.result.structuredContent.data.disponibilidad[0].slot_token as string;
 
     const argumentsValue = {
       tipo_cliente: 'existente',
       cliente_id: 50,
+      servicio_id: 10,
+      servicio_nombre: 'Consulta inicial',
       idempotency_key: 'create-appointment-integration-0001',
       confirmacion: true,
       slot_token: slotToken,
@@ -151,12 +169,14 @@ describe('integración MCP con ALMA simulado', () => {
     const sessionId = await initialize();
     const availability = await rpc(sessionId, 2, 'tools/call', {
       name: 'consultar_disponibilidad',
-      arguments: { sucursal_id: 1, servicio_id: 10, fecha: '2026-08-11' },
+      arguments: { sucursal_id: 1, servicio_id: 10, servicio_nombre: 'Consulta inicial', fecha: '2026-08-11' },
     });
     const slotToken = availability.body.result.structuredContent.data.disponibilidad[0].slot_token as string;
     const args = {
       tipo_cliente: 'existente',
       cliente_id: 50,
+      servicio_id: 10,
+      servicio_nombre: 'Consulta inicial',
       idempotency_key: 'create-appointment-concurrent-0001',
       confirmacion: true,
       slot_token: slotToken,
@@ -187,7 +207,7 @@ describe('integración MCP con ALMA simulado', () => {
 
     const availability = await rpc(sessionId, 6, 'tools/call', {
       name: 'consultar_disponibilidad',
-      arguments: { sucursal_id: 1, servicio_id: 10, fecha: '2026-08-12' },
+      arguments: { sucursal_id: 1, servicio_id: 10, servicio_nombre: 'Consulta inicial', fecha: '2026-08-12' },
     });
     const firstSlot = availability.body.result.structuredContent.data.disponibilidad[0].slot_token as string;
     const created = await rpc(sessionId, 7, 'tools/call', {
@@ -195,6 +215,8 @@ describe('integración MCP con ALMA simulado', () => {
       arguments: {
         tipo_cliente: 'existente',
         cliente_id: 50,
+        servicio_id: 10,
+        servicio_nombre: 'Consulta inicial',
         idempotency_key: 'complete-flow-create-0001',
         confirmacion: true,
         slot_token: firstSlot,
@@ -208,7 +230,7 @@ describe('integración MCP con ALMA simulado', () => {
 
     const nextAvailability = await rpc(sessionId, 9, 'tools/call', {
       name: 'consultar_disponibilidad',
-      arguments: { sucursal_id: 1, servicio_id: 10, fecha: '2026-08-13' },
+      arguments: { sucursal_id: 1, servicio_id: 10, servicio_nombre: 'Consulta inicial', fecha: '2026-08-13' },
     });
     const nextSlot = nextAvailability.body.result.structuredContent.data.disponibilidad[0].slot_token as string;
     const rescheduled = await rpc(sessionId, 10, 'tools/call', {

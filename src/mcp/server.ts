@@ -23,7 +23,7 @@ function result(output: Awaited<ReturnType<ToolService['execute']>>) {
 }
 
 export function createMcpServer(tools: ToolService): McpServer {
-  const server = new McpServer({ name: 'alma-mcp', version: '1.1.0' });
+  const server = new McpServer({ name: 'alma-mcp', version: '1.2.0' });
 
   const register = (
     name: ToolOperation,
@@ -52,7 +52,7 @@ export function createMcpServer(tools: ToolService): McpServer {
     'listar_servicios',
     {
       title: 'Listar servicios ALMA',
-      description: 'Consulta el catálogo operativo paginado: ID, nombre, duración en minutos y valoración. Busca el nombre real y conserva el ID durante la conversación. Si next no es null y no encuentras el servicio, consulta la siguiente página. Si el nombre solicitado no coincide, puedes consultar una opción relacionada para presentarla por su nombre real; no la reserves sin confirmación del cliente.',
+      description: 'Consulta el catálogo operativo paginado: ID, nombre, duración en minutos y valoración. Usa buscar con una palabra significativa, por ejemplo masaje. El servidor filtra todo el catálogo y devuelve coincidencias exactas por palabra; si no hay resultados, prueba un término más general o escala. No inventes equivalencias. Conserva juntos nombre real e ID. Con buscar consulta hay_mas y pagina para continuar entre resultados; sin buscar utiliza next y page de ALMA. Si el nombre solicitado no coincide, puedes consultar una opción relacionada para presentarla por su nombre real; no la reserves sin confirmación del cliente.',
       inputSchema: listarServiciosInputSchema as never,
       outputSchema: toolOutputSchema,
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
@@ -86,7 +86,7 @@ export function createMcpServer(tools: ToolService): McpServer {
     {
       title: 'Consultar disponibilidad',
       description:
-        'Consulta espacios reales: requiere sucursal_id y servicio_id numéricos y fecha YYYY-MM-DD; especialista_id y page son opcionales. Usa siempre sucursal_id=1 para Amsterdam Plaza y el servicio elegido; otras sedes se rechazan. Sin especialista devuelve opciones con sus nombres, horas y slot_token. Conserva cada token para su horario exacto; nunca lo muestres ni inventes. next indica más páginas. Reconsulta si cambia la selección o expira el token; ausencia de cupos no demuestra cierre.',
+        'Consulta espacios reales: requiere sucursal_id, servicio_id numéricos, servicio_nombre exacto del catálogo y fecha YYYY-MM-DD; especialista_id y page son opcionales. Usa siempre sucursal_id=1 para Amsterdam Plaza y el servicio elegido; otras sedes se rechazan. Sin especialista devuelve opciones con sus nombres, horas y slot_token. Conserva cada token para su horario exacto; nunca lo muestres ni inventes. next indica más páginas. Reconsulta si cambia la selección o expira el token; ausencia de cupos no demuestra cierre.',
       inputSchema: consultarDisponibilidadInputSchema as never,
       outputSchema: toolOutputSchema,
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
@@ -98,7 +98,7 @@ export function createMcpServer(tools: ToolService): McpServer {
     {
       title: 'Crear cita confirmada',
       description:
-        'Tras resumen y confirmación explícita ejecuta esta herramienta, no una acción de seguimiento. Requiere slot_token exacto vigente, confirmacion=true, idempotency_key estable de 16 a 128 caracteres y tipo_cliente. Existente: cliente_id numérico; nuevo: tipo_identificacion, identificacion, nombre y apellido; telefono, correo y observacion opcionales. No envíes fecha, servicio ni sucursal por separado. Confirma al cliente solo si ok=true. Ante resultado incierto no reintentes con una clave nueva; escala.',
+        'Tras resumen y confirmación explícita ejecuta esta herramienta, no una acción de seguimiento. Requiere servicio_id y servicio_nombre del servicio real mostrado y confirmado, slot_token exacto vigente, confirmacion=true, idempotency_key estable de 16 a 128 caracteres y tipo_cliente. Existente: cliente_id numérico; nuevo: tipo_identificacion, identificacion, nombre y apellido; telefono, correo y observacion opcionales. No envíes fecha ni sucursal por separado; servicio_id y servicio_nombre sí son obligatorios. Confirma al cliente solo si ok=true. Ante resultado incierto no reintentes con una clave nueva; escala.',
       inputSchema: crearCitaInputSchema as never,
       outputSchema: toolOutputSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },

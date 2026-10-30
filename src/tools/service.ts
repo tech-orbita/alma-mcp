@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Logger } from 'pino';
 import type { AlmaClient } from '../alma/client.js';
-import type { CitaConsultada } from '../alma/schemas.js';
+import type { CitaConsultada, Servicio } from '../alma/schemas.js';
 import { AppError, toAppError } from '../errors.js';
 import type { MutationCoordinator } from '../idempotency/types.js';
 import type { SlotTokenService } from '../security/slot-token.js';
@@ -25,15 +25,50 @@ export interface ToolServiceDependencies {
 // ID confirmado por OMM para Amsterdam Plaza. El catálogo de servicios de ALMA no acepta sede.
 const AUTHORIZED_BRANCH_ID = 1;
 
+const normalizeName = (value: string): string => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es').replace(/\s+/g, ' ').trim();
+
 export class ToolService {
+  private catalogCache: { expiresAt: number; services: Servicio[] } | undefined;
+  private catalogLoading: Promise<Servicio[]> | undefined;
   public constructor(private readonly dependencies: ToolServiceDependencies) {}
 
   public listarSucursales() {
     return this.dependencies.alma.listarSucursales();
   }
 
-  public listarServicios(input: { page?: number | undefined }) {
-    return this.dependencies.alma.listarServicios(input.page);
+  public async listarServicios(input: { page?: number | undefined; buscar?: string | undefined }) {
+    if (input.buscar === undefined) return this.dependencies.alma.listarServicios(input.page);
+    const words = normalizeName(input.buscar).split(' ');
+    const services = (await this.catalog()).filter((service) => words.every((word) => normalizeName(service.nombre).includes(word)));
+    const page = input.page ?? 1;
+    const pageSize = 15;
+    return { count: services.length, next: null, previous: null, pagina: page, hay_mas: page * pageSize < services.length, servicios: services.slice((page - 1) * pageSize, page * pageSize) };
+  }
+
+  private async catalog(): Promise<Servicio[]> {
+    if (this.catalogCache && this.catalogCache.expiresAt > Date.now()) return this.catalogCache.services;
+    if (this.catalogLoading) return this.catalogLoading;
+    this.catalogLoading = (async () => {
+      const services: Servicio[] = [];
+      for (let page = 1; page <= 100; page += 1) {
+        const result = await this.dependencies.alma.listarServicios(page);
+        services.push(...result.servicios);
+        if (result.next === null) {
+          this.catalogCache = { services, expiresAt: Date.now() + 60_000 };
+          return services;
+        }
+      }
+      throw new AppError({ code: 'CATALOGO_INCOMPLETO', message: 'No se pudo verificar el catálogo completo.', httpStatus: 502 });
+    })();
+    try { return await this.catalogLoading; } finally { this.catalogLoading = undefined; }
+  }
+
+  private async verifyService(id: number, name: string): Promise<Servicio> {
+    const service = (await this.catalog()).find((item) => item.id === id);
+    if (!service || normalizeName(service.nombre) !== normalizeName(name)) {
+      throw new AppError({ code: 'SERVICIO_NO_COINCIDE', message: 'El ID y nombre del servicio no coinciden con el catálogo. Vuelva a buscar el servicio antes de continuar.', httpStatus: 400 });
+    }
+    return service;
   }
 
   public listarEspecialistas(input: { servicio_id: number; page?: number | undefined }) {
@@ -47,11 +82,13 @@ export class ToolService {
   public async consultarDisponibilidad(input: {
     sucursal_id: number;
     servicio_id: number;
+    servicio_nombre: string;
     fecha: string;
     especialista_id?: number | undefined;
     page?: number | undefined;
   }) {
     this.requireAuthorizedBranch(input.sucursal_id);
+    const service = await this.verifyService(input.servicio_id, input.servicio_nombre);
     const result = await this.dependencies.alma.consultarDisponibilidad({
       sucursal: input.sucursal_id,
       servicio: input.servicio_id,
@@ -59,8 +96,12 @@ export class ToolService {
       ...(input.especialista_id === undefined ? {} : { especialista: input.especialista_id }),
       ...(input.page === undefined ? {} : { page: input.page }),
     });
+    if (result.disponibilidad.some((slot) => slot.fecha !== input.fecha || (input.especialista_id !== undefined && slot.especialistaId !== input.especialista_id) || slot.horaFin <= slot.horaInicio)) {
+      throw new AppError({ code: 'RESPUESTA_ALMA_INVALIDA', message: 'ALMA devolvió horarios incompatibles con la consulta.', httpStatus: 502 });
+    }
     return {
       ...result,
+      servicio: { id: service.id, nombre: service.nombre, duracion: service.duracion },
       zonaHoraria: this.dependencies.timeZone,
       disponibilidad: result.disponibilidad.map((slot) => ({
         ...slot,
@@ -79,6 +120,8 @@ export class ToolService {
   public async crearCita(input: CrearCitaInput) {
     const slot = this.dependencies.slotTokens.verify(input.slot_token);
     this.requireAuthorizedBranch(slot.sucursal);
+    if (slot.servicio !== input.servicio_id) throw new AppError({ code: 'SERVICIO_NO_COINCIDE', message: 'El servicio confirmado no corresponde al horario seleccionado.', httpStatus: 400 });
+    const service = await this.verifyService(input.servicio_id, input.servicio_nombre);
     const slotFingerprint = this.dependencies.slotTokens.fingerprint(input.slot_token);
     const contactKey =
       input.tipo_cliente === 'existente'
@@ -108,10 +151,17 @@ export class ToolService {
       operation: 'crear_cita',
       idempotencyKey: input.idempotency_key,
       requestHash: stableHash({ input: almaInput, slot: slotFingerprint }),
-      lockKeys: [lockFingerprint(contactKey), lockFingerprint(`slot:${slotFingerprint}`)],
+      lockKeys: [lockFingerprint(contactKey), lockFingerprint(`slot:${slot.sucursal}:${slot.especialista}:${slot.fecha}:${slot.horaInicio}`)],
       slotTokenHash: slotFingerprint,
       entityType: 'cita',
-      run: () => this.dependencies.alma.crearCita(almaInput),
+      run: async () => {
+        const result = await this.dependencies.alma.crearCita(almaInput);
+        const cita = result.cita;
+        if (cita.servicio !== slot.servicio || cita.sucursal !== slot.sucursal || cita.especialista !== slot.especialista || cita.fecha !== slot.fecha || cita.horaInicio !== slot.horaInicio || cita.horaFin !== slot.horaFin) {
+          throw new AppError({ code: 'RESULTADO_MUTACION_INCIERTO', message: 'ALMA devolvió datos distintos a la selección; requiere revisión humana.', httpStatus: 409 });
+        }
+        return { ...result, servicio_nombre: service.nombre };
+      },
       getEntityId: (response) => String(response.cita.id),
     });
   }
@@ -154,7 +204,7 @@ export class ToolService {
       requestHash: stableHash({ cita: input.cita_id, input: almaInput, slot: slotFingerprint }),
       lockKeys: [
         lockFingerprint(`cita:${input.cita_id}`),
-        lockFingerprint(`slot:${slotFingerprint}`),
+        lockFingerprint(`slot:${slot.sucursal}:${slot.especialista}:${slot.fecha}:${slot.horaInicio}`),
       ],
       slotTokenHash: slotFingerprint,
       entityType: 'cita',
@@ -188,10 +238,12 @@ export class ToolService {
     isError: boolean;
   }> {
     const correlationId = randomUUID();
+    const startedAt = Date.now();
     try {
       const raw = await handler();
       const mutationResult = this.isMutationResult(raw) ? raw : undefined;
       const data = mutationResult?.value ?? raw;
+      this.dependencies.logger.info({ correlationId, operation, elapsedMs: Date.now() - startedAt, cached: mutationResult?.cached ?? false }, 'Herramienta MCP completada');
       return {
         output: {
           ok: true,
@@ -209,7 +261,7 @@ export class ToolService {
       };
     } catch (error) {
       const safe = toAppError(error);
-      this.dependencies.logger.warn({ correlationId, operation, code: safe.code }, 'Herramienta MCP rechazada');
+      this.dependencies.logger.warn({ correlationId, operation, code: safe.code, elapsedMs: Date.now() - startedAt }, 'Herramienta MCP rechazada');
       return {
         output: {
           ok: false,
