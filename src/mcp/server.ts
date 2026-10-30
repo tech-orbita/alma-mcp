@@ -23,7 +23,7 @@ function result(output: Awaited<ReturnType<ToolService['execute']>>) {
 }
 
 export function createMcpServer(tools: ToolService): McpServer {
-  const server = new McpServer({ name: 'alma-mcp', version: '1.0.0' });
+  const server = new McpServer({ name: 'alma-mcp', version: '1.1.0' });
 
   const register = (
     name: ToolOperation,
