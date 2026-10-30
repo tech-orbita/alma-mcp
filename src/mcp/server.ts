@@ -41,7 +41,7 @@ export function createMcpServer(tools: ToolService): McpServer {
     'listar_sucursales',
     {
       title: 'Listar sucursales ALMA',
-      description: 'Lista las sucursales activas. Úsala antes de consultar disponibilidad.',
+      description: 'Lista IDs, nombres, códigos y ciudades de sucursales. Solo para configuración administrativa; Amsterdam Plaza ya está verificada como ID 1; no la llames durante la conversación. No identifica direcciones.',
       inputSchema: listarSucursalesInputSchema as never,
       outputSchema: toolOutputSchema,
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
@@ -52,7 +52,7 @@ export function createMcpServer(tools: ToolService): McpServer {
     'listar_servicios',
     {
       title: 'Listar servicios ALMA',
-      description: 'Lista servicios agendables. Puede pedir una página específica.',
+      description: 'Consulta el catálogo operativo paginado: ID, nombre, duración en minutos y valoración. Busca el nombre real y conserva el ID durante la conversación. Si next no es null y no encuentras el servicio, consulta la siguiente página. Si el nombre solicitado no coincide, puedes consultar una opción relacionada para presentarla por su nombre real; no la reserves sin confirmación del cliente.',
       inputSchema: listarServiciosInputSchema as never,
       outputSchema: toolOutputSchema,
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
@@ -63,7 +63,7 @@ export function createMcpServer(tools: ToolService): McpServer {
     'listar_especialistas',
     {
       title: 'Listar especialistas por servicio',
-      description: 'Lista especialistas habilitados para un servicio ALMA concreto.',
+      description: 'Requiere servicio_id numérico real; page es opcional. Devuelve IDs, nombres y apellidos paginados para ese servicio, sin dirección ni lista inversa de servicios por especialista. No garantiza atención en la sede ni disponibilidad; para ofrecer horarios consulta disponibilidad. Consúltala después de identificar el servicio y antes de consultar disponibilidad.',
       inputSchema: listarEspecialistasInputSchema as never,
       outputSchema: toolOutputSchema,
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
@@ -74,7 +74,7 @@ export function createMcpServer(tools: ToolService): McpServer {
     'buscar_cliente',
     {
       title: 'Buscar cliente por identificación',
-      description: 'Busca un cliente existente por su documento. No use nombre, teléfono ni correo como sustituto.',
+      description: 'Busca por identificacion como texto; devuelve clientes y sus IDs. Úsala solo cuando sea necesario para crear o localizar una cita. Un resultado vacío no prueba por sí solo identidad. No sustituyas el documento por nombre, teléfono o correo.',
       inputSchema: buscarClienteInputSchema as never,
       outputSchema: toolOutputSchema,
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
@@ -86,7 +86,7 @@ export function createMcpServer(tools: ToolService): McpServer {
     {
       title: 'Consultar disponibilidad',
       description:
-        'Consulta horarios por sucursal, servicio y fecha. Devuelve slot_token firmado; nunca invente horarios ni construya tokens.',
+        'Consulta espacios reales: requiere sucursal_id y servicio_id numéricos y fecha YYYY-MM-DD; especialista_id y page son opcionales. Usa siempre sucursal_id=1 para Amsterdam Plaza y el servicio elegido; otras sedes se rechazan. Sin especialista devuelve opciones con sus nombres, horas y slot_token. Conserva cada token para su horario exacto; nunca lo muestres ni inventes. next indica más páginas. Reconsulta si cambia la selección o expira el token; ausencia de cupos no demuestra cierre.',
       inputSchema: consultarDisponibilidadInputSchema as never,
       outputSchema: toolOutputSchema,
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
@@ -98,7 +98,7 @@ export function createMcpServer(tools: ToolService): McpServer {
     {
       title: 'Crear cita confirmada',
       description:
-        'Crea una cita usando un slot_token vigente. Exige confirmación explícita y clave de idempotencia estable. No repita con otra clave ante un resultado incierto.',
+        'Tras resumen y confirmación explícita ejecuta esta herramienta, no una acción de seguimiento. Requiere slot_token exacto vigente, confirmacion=true, idempotency_key estable de 16 a 128 caracteres y tipo_cliente. Existente: cliente_id numérico; nuevo: tipo_identificacion, identificacion, nombre y apellido; telefono, correo y observacion opcionales. No envíes fecha, servicio ni sucursal por separado. Confirma al cliente solo si ok=true. Ante resultado incierto no reintentes con una clave nueva; escala.',
       inputSchema: crearCitaInputSchema as never,
       outputSchema: toolOutputSchema,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
@@ -109,7 +109,7 @@ export function createMcpServer(tools: ToolService): McpServer {
     'consultar_citas',
     {
       title: 'Consultar citas',
-      description: 'Consulta citas por al menos un filtro: cita, cliente, documento, fecha o estado.',
+      description: 'Consulta citas paginadas usando cita_id, cliente_id, documento, fecha o estado; al menos un filtro es obligatorio, page es opcional. Contiene datos personales. Solo tras verificar autorización suficiente; conocer documento no verifica identidad. Evita consultas amplias.',
       inputSchema: consultarCitasInputSchema as never,
       outputSchema: toolOutputSchema,
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
@@ -121,7 +121,7 @@ export function createMcpServer(tools: ToolService): McpServer {
     {
       title: 'Reagendar cita confirmada',
       description:
-        'Verifica la cita y la mueve a un slot_token vigente. Exige confirmación explícita e idempotencia. No use para crear una cita nueva.',
+        'Reagenda una cita existente: requiere cita_id numérico, slot_token nuevo vigente, confirmacion=true tras resumen y autorización, e idempotency_key estable. observacion es opcional. Previamente verifica identidad y obtiene disponibilidad del nuevo horario. No envíes fecha ni sucursal separadas; no uses para crear. Ante resultado incierto escala sin cambiar la clave.',
       inputSchema: reagendarCitaInputSchema as never,
       outputSchema: toolOutputSchema,
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
@@ -133,7 +133,7 @@ export function createMcpServer(tools: ToolService): McpServer {
     {
       title: 'Cancelar cita confirmada',
       description:
-        'Verifica y cancela una cita. Exige confirmación explícita y clave de idempotencia estable. Es una acción destructiva.',
+        'Cancela una cita existente: requiere cita_id numérico, confirmacion=true tras verificar identidad y obtener confirmación explícita, e idempotency_key estable; motivo es opcional. Es destructiva. Ante resultado incierto escala sin cambiar la clave.',
       inputSchema: cancelarCitaInputSchema as never,
       outputSchema: toolOutputSchema,
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },

@@ -153,6 +153,10 @@ export class AlmaClient {
           continue;
         }
 
+        // Un 5xx tras una escritura no demuestra que ALMA no la haya aplicado.
+        if (!isRead && response.status >= 500) {
+          throw new AppError({ code: 'RESULTADO_MUTACION_INCIERTO', message: 'ALMA devolvió un error de servidor después de la escritura. Requiere reconciliación antes de reintentar.', httpStatus: 502 });
+        }
         const raw = await this.parseJson(response);
         if (!response.ok) {
           try {
@@ -173,7 +177,12 @@ export class AlmaClient {
         this.options.logger.debug({ route, method, status: response.status, attempt, elapsedMs }, 'Solicitud ALMA completada');
         return parseAlmaEnvelope(raw, dataSchema);
       } catch (error) {
-        if (error instanceof AppError) throw error;
+        if (error instanceof AppError) {
+          if (!isRead && error.code === 'RESPUESTA_ALMA_INVALIDA') {
+            throw new AppError({ code: 'RESULTADO_MUTACION_INCIERTO', message: 'La respuesta de la escritura no permite confirmar su resultado. Requiere reconciliación antes de reintentar.', httpStatus: 502, cause: error });
+          }
+          throw error;
+        }
         const timedOut = controller.signal.aborted;
         if (isRead && attempt < maximumAttempts) {
           this.options.logger.warn({ route, method, attempt, timedOut }, 'Fallo transitorio de lectura ALMA');

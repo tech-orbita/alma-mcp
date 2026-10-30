@@ -77,7 +77,7 @@ export class PostgresMutationCoordinator implements MutationCoordinator {
         value = await request.run();
       } catch (error) {
         const safe = toAppError(error);
-        const ambiguous = safe.code === 'TIMEOUT_ALMA' || safe.code === 'ALMA_NO_DISPONIBLE';
+        const ambiguous = ['TIMEOUT_ALMA', 'ALMA_NO_DISPONIBLE', 'RESULTADO_MUTACION_INCIERTO'].includes(safe.code);
         const storedError = ambiguous
           ? new AppError({
               code: 'RESULTADO_MUTACION_INCIERTO',

@@ -6,25 +6,25 @@ const shortText = z.string().trim().min(1).max(120);
 const observation = z.string().trim().min(1).max(500);
 const idempotencyKey = z
   .string()
-  .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{15,127}$/, 'Use una clave estable de 16 a 128 caracteres');
-const slotToken = z.string().min(80).max(2_048);
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{15,127}$/, 'Use una clave estable de 16 a 128 caracteres').describe('Clave sin datos personales, única para esta intención y estable en cualquier repetición.');
+const slotToken = z.string().min(80).max(2_048).describe('Token opaco íntegro del horario exacto obtenido de consultar_disponibilidad; nunca inventarlo.');
 const confirmation = z.literal(true).describe('Debe ser true solo después de que la persona confirme explícitamente.');
 
 export const listarSucursalesInputSchema = strictEmptyObject;
-export const listarServiciosInputSchema = z.object({ page: pageSchema.optional() }).strict();
+export const listarServiciosInputSchema = z.object({ page: pageSchema.describe('Página positiva; omitir para la primera.').optional() }).strict();
 export const listarEspecialistasInputSchema = z
-  .object({ servicio_id: positiveIdSchema, page: pageSchema.optional() })
+  .object({ servicio_id: positiveIdSchema.describe('ID numérico real de listar_servicios'), page: pageSchema.describe('Página positiva opcional').optional() })
   .strict();
 export const buscarClienteInputSchema = z
   .object({ identificacion: z.string().trim().min(3).max(64) })
   .strict();
 export const consultarDisponibilidadInputSchema = z
   .object({
-    sucursal_id: positiveIdSchema,
-    servicio_id: positiveIdSchema,
-    fecha: dateSchema,
-    especialista_id: positiveIdSchema.optional(),
-    page: pageSchema.optional(),
+    sucursal_id: positiveIdSchema.describe('ID numérico de Amsterdam Plaza: siempre 1'),
+    servicio_id: positiveIdSchema.describe('ID numérico del servicio real seleccionado'),
+    fecha: dateSchema.describe('Fecha deseada en formato YYYY-MM-DD'),
+    especialista_id: positiveIdSchema.describe('ID numérico opcional si hay preferencia por especialista').optional(),
+    page: pageSchema.describe('Página positiva opcional').optional(),
   })
   .strict();
 

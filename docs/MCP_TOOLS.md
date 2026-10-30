@@ -25,7 +25,7 @@ Un error mantiene la misma forma, usa `ok: false`, `data: null`, `isError: true`
 
 ### `listar_sucursales`
 
-Entrada `{}`. Devuelve sucursales activas. Debe ser el origen de `sucursal_id`; no inventar IDs.
+Entrada `{}`. Devuelve sucursales activas. Uso administrativo para identificar registros; no permite verificar la dirección y no debe llamarse durante cada conversación. El usuario confirmó que Amsterdam Plaza corresponde a ID numérico 1.
 
 ### `listar_servicios`
 
@@ -130,7 +130,7 @@ El servidor verifica la cita antes del `DELETE`. Es destructiva y requiere confi
 
 ## Orden recomendado
 
-Crear: sucursales -> servicios -> especialistas -> cliente -> disponibilidad -> resumen/confirmación -> crear -> consultar cita creada.
+Crear: servicio real (catálogo paginado si es necesario) -> especialistas para ese servicio -> disponibilidad con sede previamente verificada -> datos necesarios -> resumen/confirmación explícita del servicio y horario -> crear. Consultar cliente solo cuando haga falta. No repetir lecturas sin necesidad. Tras éxito confirmado, activar Cita creada solo cuando el nuevo flujo exista y esté configurado.
 
 Reagendar: localizar cita -> disponibilidad -> resumen/confirmación -> reagendar -> consultar cita.
 

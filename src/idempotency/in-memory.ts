@@ -45,7 +45,7 @@ export class InMemoryMutationCoordinator implements MutationCoordinator {
         return { value, cached: false };
       } catch (error) {
         const safe = toAppError(error);
-        const ambiguous = safe.code === 'TIMEOUT_ALMA' || safe.code === 'ALMA_NO_DISPONIBLE';
+        const ambiguous = ['TIMEOUT_ALMA', 'ALMA_NO_DISPONIBLE', 'RESULTADO_MUTACION_INCIERTO'].includes(safe.code);
         stored.status = ambiguous ? 'uncertain' : 'failed';
         stored.error = ambiguous
           ? new AppError({

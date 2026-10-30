@@ -56,4 +56,12 @@ describe('idempotencia y concurrencia', () => {
     await expect(coordinator.execute({ ...base, run })).rejects.toMatchObject({ code: 'IDEMPOTENCIA_EN_REVISION' });
     expect(run).toHaveBeenCalledTimes(1);
   });
+  it('conserva en revisión una respuesta de escritura incierta', async () => {
+    const coordinator = new InMemoryMutationCoordinator();
+    const run = vi.fn(async () => { throw new AppError({ code: 'RESULTADO_MUTACION_INCIERTO', message: 'respuesta inválida' }); });
+    await expect(coordinator.execute({ ...base, run })).rejects.toMatchObject({ code: 'RESULTADO_MUTACION_INCIERTO' });
+    await expect(coordinator.execute({ ...base, run })).rejects.toMatchObject({ code: 'IDEMPOTENCIA_EN_REVISION' });
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
 });

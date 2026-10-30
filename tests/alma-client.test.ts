@@ -66,4 +66,17 @@ describe('AlmaClient', () => {
       .mockResolvedValue(new Response(JSON.stringify({ success: true, data: {} }), { status: 200 }));
     await expect(client(invalidEnvelope, 0).listarSucursales()).rejects.toMatchObject({ code: 'RESPUESTA_ALMA_INVALIDA' });
   });
+  it.each([
+    new Response('no json', { status: 200 }),
+    new Response('{}', { status: 502 }),
+    new Response(JSON.stringify({ success: true, message: '', data: {}, errors: [] }), { status: 200 }),
+  ])('considera incierta una escritura con respuesta no verificable', async (response) => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(response);
+    await expect(client(fetchMock, 0).crearCita({
+      sucursal: 1, servicio: 10, especialista: 25, cliente: 50,
+      fecha: '2026-08-10', horaInicio: '09:00', horaFin: '09:30',
+    })).rejects.toMatchObject({ code: 'RESULTADO_MUTACION_INCIERTO' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
 });

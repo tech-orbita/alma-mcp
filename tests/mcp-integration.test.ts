@@ -104,6 +104,26 @@ describe('integración MCP con ALMA simulado', () => {
     );
   });
 
+  it('rechaza disponibilidad y creación con una sede distinta de Amsterdam Plaza', async () => {
+    const sessionId = await initialize();
+    const availability = await rpc(sessionId, 2, 'tools/call', {
+      name: 'consultar_disponibilidad',
+      arguments: { sucursal_id: 2, servicio_id: 10, fecha: '2026-08-10' },
+    });
+    expect(availability.body.result.structuredContent.error.code).toBe('SUCURSAL_NO_AUTORIZADA');
+
+    const config = testConfig();
+    const tokenOtherBranch = new SlotTokenService(config.SLOT_TOKEN_SECRET, config.ALMA_TIMEZONE, 300).sign({
+      sucursal: 2, servicio: 10, especialista: 25, fecha: '2026-08-10', horaInicio: '09:00', horaFin: '09:30',
+    });
+    const created = await rpc(sessionId, 3, 'tools/call', {
+      name: 'crear_cita',
+      arguments: { tipo_cliente: 'existente', cliente_id: 50, idempotency_key: 'other-branch-create-0001', confirmacion: true, slot_token: tokenOtherBranch },
+    });
+    expect(created.body.result.structuredContent.error.code).toBe('SUCURSAL_NO_AUTORIZADA');
+    expect(mockAppointments).toHaveLength(0);
+  });
+
   it('consulta disponibilidad, crea una sola cita y deduplica la repetición', async () => {
     const sessionId = await initialize();
     const availability = await rpc(sessionId, 2, 'tools/call', {

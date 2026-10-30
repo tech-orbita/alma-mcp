@@ -22,6 +22,9 @@ export interface ToolServiceDependencies {
   logger: Logger;
 }
 
+// ID confirmado por OMM para Amsterdam Plaza. El catálogo de servicios de ALMA no acepta sede.
+const AUTHORIZED_BRANCH_ID = 1;
+
 export class ToolService {
   public constructor(private readonly dependencies: ToolServiceDependencies) {}
 
@@ -48,6 +51,7 @@ export class ToolService {
     especialista_id?: number | undefined;
     page?: number | undefined;
   }) {
+    this.requireAuthorizedBranch(input.sucursal_id);
     const result = await this.dependencies.alma.consultarDisponibilidad({
       sucursal: input.sucursal_id,
       servicio: input.servicio_id,
@@ -74,6 +78,7 @@ export class ToolService {
 
   public async crearCita(input: CrearCitaInput) {
     const slot = this.dependencies.slotTokens.verify(input.slot_token);
+    this.requireAuthorizedBranch(slot.sucursal);
     const slotFingerprint = this.dependencies.slotTokens.fingerprint(input.slot_token);
     const contactKey =
       input.tipo_cliente === 'existente'
@@ -131,6 +136,7 @@ export class ToolService {
 
   public async reagendarCita(input: ReagendarCitaInput) {
     const slot = this.dependencies.slotTokens.verify(input.slot_token);
+    this.requireAuthorizedBranch(slot.sucursal);
     const slotFingerprint = this.dependencies.slotTokens.fingerprint(input.slot_token);
     const almaInput = {
       sucursal: slot.sucursal,
@@ -233,6 +239,7 @@ export class ToolService {
         httpStatus: 404,
       });
     }
+    this.requireAuthorizedBranch(appointment.sucursalId);
     if (appointment.estado.toLocaleLowerCase('es').includes('cancel')) {
       throw new AppError({
         code: 'CITA_YA_CANCELADA',
@@ -241,6 +248,16 @@ export class ToolService {
       });
     }
     return appointment;
+  }
+
+  private requireAuthorizedBranch(sucursalId: number): void {
+    if (sucursalId !== AUTHORIZED_BRANCH_ID) {
+      throw new AppError({
+        code: 'SUCURSAL_NO_AUTORIZADA',
+        message: 'Esta operación solo está autorizada para Amsterdam Plaza.',
+        httpStatus: 403,
+      });
+    }
   }
 
   private isMutationResult(value: unknown): value is { value: unknown; cached: boolean } {
